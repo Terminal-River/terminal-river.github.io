@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Learning Generalizable Behaviors for Terminal Agents (RIVER)</title>
+<meta name="description" content="RIVER studies how reward-signal quality affects terminal-agent RL by filtering defective environments and regularizing repetitive behavior.">
+<link rel="stylesheet" href="style.css">
+<script>document.documentElement.classList.add("js");</script>
+</head>
+<!--
+  ANONYMIZATION FLAG: during the ICLR review period, change the line below to
+  <body class="anon">. Every de-anonymizing element (author block, affiliations,
+  BibTeX author line and citation key) carries
+  class="anon-gated" and is hidden by the CSS rule: body.anon .anon-gated { display: none; }
+  Elements with class="anon-only" (the anonymized BibTeX citation key) are shown
+  only when body.anon is set.
+-->
+<body>
+
+<nav aria-label="Sections">
+  <a href="#problem">Problem</a> &middot;
+  <a href="#insight">Insight</a> &middot;
+  <a href="#recipe">RIVER</a> &middot;
+  <a href="#results">Results</a> &middot;
+  <a href="#analysis">Analysis</a> &middot;
+  <a href="#casefiles">Case Files</a> &middot;
+  <a href="#acknowledgments">Acknowledgments</a> &middot;
+  <a href="#bibtex">BibTeX</a>
+</nav>
+
+<!-- ============ 1. HERO ============ -->
+<header id="hero">
+  <h1>Learning Generalizable Behaviors for Terminal Agents</h1>
+  <p class="tagline">
+    <span>How Does RL Help Terminal Agents Generalize?</span>
+    <span>Can Your Synthetic Terminal Environments Be Trusted for RL?</span>
+  </p>
+
+  <!-- anon-gated: author block. Adding class="anon" to <body> hides this for the ICLR review period. -->
+  <p class="authors anon-gated">
+    <a href="https://yihangyao.github.io">Yihang Yao</a><sup>&dagger;1,2</sup>,
+    <a href="https://www.salesforce.com/blog/author/bo-pang/">Bo Pang</a><sup>&dagger;1</sup>,
+    <a href="https://nxphi47.github.io/">Xuan Phi Nguyen</a><sup>1</sup>,
+    <a href="https://safeai-lab.github.io/">Ding Zhao</a><sup>2</sup>,
+    <a href="https://raihanjoty.github.io/">Shafiq Joty</a><sup>1</sup>,
+    <a href="https://www.salesforce.com/blog/author/semih-yavuz/">Semih Yavuz</a><sup>1</sup>
+  </p>
+  <!-- anon-gated: affiliations. Adding class="anon" to <body> hides this for the ICLR review period. -->
+  <p class="affiliations anon-gated">
+    <sup>1</sup>Salesforce AI Research, <sup>2</sup>Carnegie Mellon University
+  </p>
+  <p class="contrib-note anon-gated"><sup>&dagger;</sup>Core Contributors</p>
+
+  <p class="venue">arXiv preprint</p>
+
+  <ul class="stat-strip">
+    <li><span class="stat-num">&lt;30%</span><span class="stat-label">of the TMax environments used</span></li>
+    <li><span class="stat-num">+106% / +30%</span><span class="stat-label">larger average RL gains on TB-Lite / TB-v2.1</span></li>
+  </ul>
+
+  <p><a class="teaser-chip" href="#casefiles">Case Examples: Reward Exploits and Verifier Failures &rarr;</a></p>
+
+<figure>
+  <img src="static/figures/teaser.png" alt="Three-panel overview: SFT equips low-level atomic skills, RL shapes high-level behaviors that compose and route those skills, and AUC-ROC curves show that behavior features predict trajectory success far better than skill features." width="4692" height="1767" loading="eager">
+  <figcaption>The <a href="#insight"><strong>Agentic Compositional Generalization</strong></a> hypothesis: SFT supplies atomic skills, while RL learns how to compose and route them. This suggests a practical recipe: broaden skill coverage before RL, then improve verifier quality so RL reinforces reusable behaviors.</figcaption>
+</figure>
+</header>
+
+<main>
+
+<!-- ============ 2. TL;DR ============ -->
+<section id="tldr">
+  <h2>TL;DR</h2>
+  <p>Terminal-agent RL is often treated as an environment-scaling problem. Our results point to another important factor: <strong>the quality of the reward signal</strong>. The <a href="#insight">agentic compositional generalization hypothesis</a> proposes that SFT and pre-training primarily supply atomic skills, while RL shapes reusable (multi-turn) behaviors that compose and route them.</p>
+  <p>That division of labor guides RIVER. First broaden skill coverage; then filter defective environments and shape the reward so RL reinforces transferable behaviors. Using fewer than 30% of the TMax environments, River-8B leads the evaluated open-source RL-trained 8B models across four terminal benchmarks, while the same filtering recipe improves RL gains across models from 2B to 27B.</p>
+</section>
+
+<!-- ============ 3. PROBLEM ============ -->
+<section id="problem">
+  <h2>The Problem: When Verifiers Give the Wrong Signal</h2>
+  <p>Terminal-agent RL has a simple loop: the model acts in an executable environment, and a verifier decides whether the result deserves reward. Synthetic environments make that loop scalable when real interaction data are scarce. But scaling the collection does not by itself ensure that the reward reflects the task.</p>
+  <p>Our audit found substantial noise in public environment collections. Only 35.8% of TMax environments were labeled Clean; TermiGen and TerminalTraj-5k had even lower clean rates. Some defects reward shortcuts. Others reject valid solutions. In both cases, the agent learns from the wrong signal.</p>
+  <p>So the central question is not just how many environments we can generate. It is what RL learns from them, and whether their rewards can be trusted.</p>
+<figure>
+  <img src="static/figures/env_audit.png" alt="Donut charts of audit verdicts for TMax, TermiGen, and TerminalTraj-5k environment pools, showing large defective fractions in each." width="7937" height="2220" loading="lazy">
+  <figcaption>Clean environments are the minority across all three audited collections.</figcaption>
+</figure>
+  <p class="micro-teaser">Watch an agent copy a leaked answer file for reward 1.0 while a correct solution gets reward 0. <a href="#casefiles">See the case files &rarr;</a></p>
+</section>
+
+<!-- ============ 4. INSIGHT ============ -->
+<section id="insight">
+  <h2>The Hypothesis: RL Shapes How Agents Act</h2>
+  <p>Our <strong>agentic compositional generalization</strong> hypothesis proposes that pre-training and SFT supply low-level skills, while RL primarily shapes reusable, multi-turn behaviors that decide when and how to deploy them. This account may help explain why training on a narrow set of domains can still transfer to new ones.</p>
+
+  <div class="def-cards">
+    <div class="def-card">
+      <h3>Skill</h3>
+      <p>A property of an <em>individual action</em>. Can the agent write the regex, call the API, or use the tool correctly?</p>
+    </div>
+    <div class="def-card">
+      <h3>Behavior</h3>
+      <p>A property of an <em>action sequence</em>. Does the agent inspect first, recover from errors, verify its work, and avoid loops?</p>
+    </div>
+  </div>
+
+  <p>The evidence is striking. Behavior features predict trajectory success with an AUC of 0.74, while skill features remain near chance at roughly 0.55. The behavior&ndash;success relationship also becomes stronger after RL. Knowing <em>how</em> an agent acts tells us more than knowing which skills appear in its trajectory.</p>
+
+  <details>
+    <summary>Supporting figure: AUC-ROC analysis</summary>
+<figure class="fig-narrow">
+  <img src="static/figures/auc_roc.png" alt="ROC curves comparing behavior and skill features for predicting trajectory success before and after RL." width="1755" height="1686" loading="lazy">
+  <figcaption>For reference, an AUC of 0.5 corresponds to chance-level discrimination, while 1.0 represents perfect discrimination. Behavior features reach 0.74 after RL; skill features remain near chance at roughly 0.55.</figcaption>
+</figure>
+  </details>
+
+  <blockquote class="pull-quote"><p>&ldquo;Task success is associated more with how the agent behaves than which skills a trajectory uses.&rdquo;</p></blockquote>
+</section>
+
+<!-- ============ 5. RECIPE ============ -->
+<section id="recipe">
+  <h2>The Recipe: Improving the Reward Signal</h2>
+  <p>The hypothesis gives us a practical design rule: cover missing skills before RL, then run RL with trustworthy rewards that reinforce reusable behaviors. RIVER turns that rule into four steps; environment filtering and verifier enhancement are the core.</p>
+  <ol class="pipeline-steps">
+    <li><strong>Start with broad-coverage SFT (optional).</strong> Give weaker models a diverse base of atomic skills.</li>
+    <li class="core"><strong>Filter the environments</strong> <em>(RIVER core)</em>. An LLM rubric audit flags defective tasks, then an oracle pass@2 check removes tasks that oracle agents cannot solve.</li>
+    <li class="core"><strong>Enhance the verifier</strong> <em>(RIVER core)</em>. A lightweight turn-level signal penalizes repetitive loops.</li>
+    <li><strong>Run GRPO RL</strong> on the resulting <strong>RIVER-TMax-3.5K</strong> collection.</li>
+  </ol>
+  <p><strong>14,399 TMax environments in &rarr; 3.5K kept (&lt;30%).</strong></p>
+
+<figure>
+  <img src="static/figures/pipeline.png" alt="The four-step RIVER pipeline diagram: broad-coverage SFT, environment filtering via LLM rubric audit and oracle solvability check, verifier enhancement with a turn-wise repetition penalty, and GRPO RL." width="7156" height="1320" loading="lazy">
+  <figcaption>RIVER filters the training environments, strengthens the reward signal, and then runs RL on the curated collection.</figcaption>
+</figure>
+
+  <p>Filtering protects both sides of the reward: it removes tasks that reward shortcuts and tasks that reject correct work. <a href="#casefiles">The case files</a> show both failure modes in practice.</p>
+
+  <aside class="callout">
+    <h3>Can you trust an LLM audit?</h3>
+    <p>As a cross-check, Claude Opus 4.8 independently re-judged 120 GPT-5.4 verdicts. Clean-vs-defective agreement was 83.3%, and 90% of defect flags were confirmed. Clean verdicts were less reliable, so the retained set is not guaranteed to be perfect. The audit is most useful as a reliable removal filter.</p>
+  </aside>
+
+  <details id="verdict-defs">
+    <summary>The 8 audit verdicts</summary>
+    <dl class="verdict-list">
+  <div><dt id="def-clean"><strong>Clean</strong></dt><dd>task, environment, and verifier are consistent; no defect found.</dd></div>
+  <div><dt id="def-verifier-too-weak"><strong>Verifier-Too-Weak</strong></dt><dd>the checks are so loose that non-solutions pass. <a href="#audit-task_000254_21ede93b">&rarr; case files</a></dd></div>
+  <div><dt id="def-instr-verifier-mismatch"><strong>Instr-Verifier-Mismatch</strong></dt><dd>the verifier tests something different from what the instruction asks. <a href="#audit-task_001036_07b75c89">&rarr; case files</a></dd></div>
+  <div><dt id="def-instr-env-mismatch"><strong>Instr-Env-Mismatch</strong></dt><dd>the environment doesn&rsquo;t contain what the instruction assumes. <a href="#audit-task_000641_37f8ea78">&rarr; case files</a></dd></div>
+  <div><dt id="def-answer-leak"><strong>Answer-Leak</strong></dt><dd>the answer the verifier checks for is sitting in the environment. <a href="#audit-task_000028_ae6330dd">&rarr; case files</a></dd></div>
+  <div><dt id="def-instr-ambiguous"><strong>Instr-Ambiguous</strong></dt><dd>the instruction admits multiple reasonable readings that the verifier doesn&rsquo;t accept.</dd></div>
+  <div><dt id="def-task-trivial"><strong>Task-Trivial</strong></dt><dd>the task can be passed with no meaningful work.</dd></div>
+  <div><dt id="def-other"><strong>Other</strong></dt><dd>defects outside the categories above.</dd></div>
+    </dl>
+  </details>
+</section>
+
+<!-- ============ 6. RESULTS ============ -->
+<section id="results">
+  <h2>Results: Better Signals Improve Performance</h2>
+
+  <h3 id="leaderboard">6a. RL-trained 8B models</h3>
+  <p>Among the evaluated open-source RL-trained 8B models, River-8B ranks first on all four benchmarks. It reaches an average score of <strong>19.4</strong>, compared with 17.8 for the strongest baseline.</p>
+<div class="table-wrap">
+<table>
+  <caption>Performance of evaluated RL-trained 8B models on four terminal-agent benchmarks (scores &times;10&sup2;, mean &plusmn; std over 3 seeds). River-8B leads all four in this comparison. Otbl = Terminal-Bench-Lite; Tbv2.1 = Terminal-Bench-v2.1; Tbpro = Terminal-Bench-Pro; Twv = Terminal-World-Verified.</caption>
+  <thead><tr><th scope="col">Model</th><th scope="col">Harness</th><th scope="col">Training</th><th scope="col">Otbl</th><th scope="col">Tbv2.1</th><th scope="col">Tbpro</th><th scope="col">Twv</th><th scope="col">Avg.</th></tr></thead>
+  <tbody>
+    <tr class="ours-row"><th scope="row">River-8B (ours)</th><td>EndlessAgent</td><td>SFT+RL</td><td><strong>21.8 <span class="std">&plusmn; 2.9</span></strong></td><td><strong>9.7 <span class="std">&plusmn; 0.6</span></strong></td><td><strong>23.0 <span class="std">&plusmn; 3.1</span></strong></td><td><strong>23.0 <span class="std">&plusmn; 2.5</span></strong></td><td><strong>19.4 <span class="std">&plusmn; 1.2</span></strong></td></tr>
+    <tr><th scope="row">OpenThinker-8B-RL</th><td>Terminus-2</td><td>SFT+RL</td><td>18.4 <span class="std">&plusmn; 1.5</span></td><td>8.6 <span class="std">&plusmn; 0.6</span></td><td>21.8 <span class="std">&plusmn; 1.6</span></td><td>22.3 <span class="std">&plusmn; 1.5</span></td><td>17.8 <span class="std">&plusmn; 0.7</span></td></tr>
+    <tr><th scope="row">OT-SFT-Endless-8B</th><td>EndlessAgent</td><td>SFT+RL</td><td>14.1 <span class="std">&plusmn; 3.6</span></td><td>6.4 <span class="std">&plusmn; 1.7</span></td><td>16.8 <span class="std">&plusmn; 0.8</span></td><td>21.7 <span class="std">&plusmn; 1.9</span></td><td>14.7 <span class="std">&plusmn; 1.1</span></td></tr>
+    <tr><th scope="row">TMax-RL-8B</th><td>Vanillux2</td><td>RL</td><td>17.0 <span class="std">&plusmn; 3.7</span></td><td>6.0 <span class="std">&plusmn; 0.6</span></td><td>16.3 <span class="std">&plusmn; 1.0</span></td><td>19.0 <span class="std">&plusmn; 2.6</span></td><td>14.6 <span class="std">&plusmn; 1.2</span></td></tr>
+    <tr><th scope="row">OpenThinker-Agent-v1</th><td>Terminus-2</td><td>SFT+RL</td><td>16.0 <span class="std">&plusmn; 0.6</span></td><td>5.2 <span class="std">&plusmn; 0.6</span></td><td>16.2 <span class="std">&plusmn; 1.0</span></td><td>21.7 <span class="std">&plusmn; 2.9</span></td><td>14.8 <span class="std">&plusmn; 0.8</span></td></tr>
+  </tbody>
+</table>
+</div>
+  <h3 id="fewer-envs">6b. Less data, larger RL gains</h3>
+  <p>We keep the base models, TMax training pipeline, harness, and DPPO objective fixed, aside from minor infrastructure differences. Replacing the full environment set with RIVER&rsquo;s filtered &lt;30% subset produces, on average, <strong>106% larger RL gains</strong> on Terminal-Bench-Lite and <strong>30% larger gains</strong> on Terminal-Bench-v2.1.</p>
+<figure>
+  <img src="static/figures/qwen35_results.png" alt="Bar charts across Qwen3.5-2B, 4B, 9B, and Qwen3.6-27B showing larger RL gains when training on RIVER's filtered environment subset instead of the full TMax set." width="3500" height="1039" loading="lazy">
+  <figcaption>Across 2B&ndash;27B models, the filtered subset delivers larger RL gains than the full TMax collection.</figcaption>
+</figure>
+
+  <h3 id="verifier-ablation">6c. Not every correlated signal improves performance</h3>
+  <p>Both shaping signals change the targeted behavior, but in this ablation only the turn-wise repetition penalty improves overall performance. Rewarding verification increases verification without improving results. Correlation alone is not enough.</p>
+<figure>
+  <img src="static/figures/verifier_ablation.png" alt="Five-panel ablation of process-level reward signals showing the repetition penalty improves performance while rewarding verification does not." width="5123" height="1400" loading="lazy">
+  <figcaption>Penalizing repetitive loops helps; directly rewarding verification does not.</figcaption>
+</figure>
+
+  <h3 id="reward-integrity-pays">6d. Filtering has a measurable payoff</h3>
+  <p>With the same budget of 3.5K environments, the integrity-filtered set scores <strong>19.4</strong> on average, compared with <strong>17.7</strong> for a random TMax subset.</p>
+<div class="table-wrap">
+<table id="ablation-random">
+  <caption>Ablation on RL training data: integrity-filtered vs. randomly sampled 3.5K TMax environments, plus the SFT starting checkpoint. Scores &times;10&sup2;, mean &plusmn; std over 3 seeds.</caption>
+  <thead><tr><th scope="col">Training set</th><th scope="col">Otbl</th><th scope="col">Tbv2.1</th><th scope="col">Tbpro</th><th scope="col">Twv</th><th scope="col">Avg.</th></tr></thead>
+  <tbody>
+    <tr class="ours-row"><th scope="row">River-8B (ours)</th><td>21.8 <span class="std">&plusmn; 2.9</span></td><td>9.7 <span class="std">&plusmn; 0.6</span></td><td>23.0 <span class="std">&plusmn; 3.1</span></td><td>23.0 <span class="std">&plusmn; 2.5</span></td><td><strong>19.4 <span class="std">&plusmn; 1.2</span></strong></td></tr>
+    <tr><th scope="row">RL on random TMax-3.5K</th><td>18.6 <span class="std">&plusmn; 1.9</span></td><td>8.2 <span class="std">&plusmn; 1.3</span></td><td>23.7 <span class="std">&plusmn; 1.5</span></td><td>20.3 <span class="std">&plusmn; 0.6</span></td><td>17.7 <span class="std">&plusmn; 0.7</span></td></tr>
+    <tr><th scope="row">River-SFT-8B</th><td>11.3 <span class="std">&plusmn; 2.3</span></td><td>6.4 <span class="std">&plusmn; 1.3</span></td><td>13.7 <span class="std">&plusmn; 2.6</span></td><td>18.5 <span class="std">&plusmn; 2.3</span></td><td>12.5 <span class="std">&plusmn; 1.1</span></td></tr>
+  </tbody>
+</table>
+</div>
+  <p>The 1.7-point gap is not abstract. <a href="#casefiles">The case files</a> show how defective rewards teach shortcuts or punish correct behavior.</p>
+  <p>Taken together, the recipe holds across model families, scales from 2B to 27B, agent harnesses, and RL objectives.</p>
+</section>
+
+<!-- ============ 7. ANALYSIS ============ -->
+<section id="analysis">
+  <h2>What Changes During RL: Skills Stay, Behaviors Move</h2>
+
+  <h3>1. The skills stay; the routing changes</h3>
+  <p>Skill usage remains strongly correlated before and after RL, and skill co-occurrence is largely preserved (RSA &rho; = 0.83). The mapping from tasks to skills changes more substantially (&rho; = 0.27). These patterns are consistent with RL reorganizing <em>when</em> existing skills are used rather than building a new skill inventory.</p>
+<figure>
+  <img src="static/figures/correlation_analysis.png" alt="Scatter and correlation plots showing pre- and post-RL skill usage strongly correlated, with preserved skill-skill structure but reorganized task-skill routing." width="5475" height="1764" loading="lazy">
+  <figcaption>Skill use stays stable, while task-to-skill routing changes after RL.</figcaption>
+</figure>
+
+  <h3>2. Behaviors transfer across domains</h3>
+  <p>In our controlled experiment, RL training on only 2 of 8 domains still improves held-out performance, and similar behavior shifts appear in domains excluded from training.</p>
+<figure class="fig-three-quarter">
+  <img src="static/figures/behavior_transfer.png" alt="Charts showing behavior transfer to domains excluded from RL training." width="3888" height="2845" loading="lazy">
+  <figcaption>Behavior shifts observed after training on two domains also appear in the six held-out domains.</figcaption>
+</figure>
+
+  <h3>3. SFT skill coverage gates RL gains</h3>
+  <p>Narrow and diverse SFT checkpoints look similar before RL. After RL, the model with broader atomic-skill coverage pulls ahead. These results suggest that broader SFT coverage provides a stronger starting point, consistent with RL being inefficient at acquiring missing atomic skills.</p>
+<figure class="fig-narrow">
+  <img src="static/figures/sft_coverage.png" alt="Line chart comparing narrow and diverse SFT models: similar before RL, with the diverse-coverage model pulling ahead after RL." width="1521" height="1200" loading="lazy">
+  <figcaption>Broader SFT skill coverage creates a stronger starting point for RL.</figcaption>
+</figure>
+  <details>
+    <summary>Supporting figure: atomic-skill coverage</summary>
+<figure class="fig-narrow">
+  <img src="static/figures/atomic_coverage.png" alt="Three-way comparison of atomic-skill coverage across SFT data configurations." width="4378" height="6003" loading="lazy">
+  <figcaption>Atomic-skill coverage comparison across SFT data configurations.</figcaption>
+</figure>
+  </details>
+
+</section>
+
+<!-- ============ 8. CASE FILES ============ -->
+<section id="casefiles">
+  <h2>Reward Integrity in Practice: The Case Files</h2>
+  <p>Bad verifiers fail in two directions: they reward shortcuts and reject correct work. The first set of cases shows what RIVER catches before training. The second shows what happens when corrupted rewards reach the rollout.</p>
+  <p><strong>Source.</strong> All cases are drawn from the <a href="https://huggingface.co/datasets/allenai/TMax-15K">TMax-15K collection</a>.</p>
+
+  <h3 id="sec-8a">8a. Caught before training</h3>
+  <p>Four representative audit findings. Expand any case for the task, failure, and key evidence.</p>
+  <div id="audit-list" class="audit-list">
+<details id="audit-task_000254_21ede93b" data-verdict="verifier-too-weak">
+  <summary><a class="badge" href="#def-verifier-too-weak" title="Verdict definition (RIVER section)">Verifier-Too-Weak</a> <code>task_000254</code></summary>
+  <p><strong>Task.</strong> Write a C archiver daemon that recursively processes legacy log files, invokes a filter script via <code>popen()</code>, maintains atomic JSON state, and continuously monitors an incoming directory using <code>inotify</code>.</p>
+  <p><strong>Why it fails the audit.</strong> The instruction requires several concrete implementation properties: the solution must be a C program, recursively traverse existing logs, invoke the filter through <code>popen()</code>, update its state atomically using <code>rename()</code>, and use <code>inotify</code> to process newly closed files. The verifier, however, observes only a running process named <code>archiver</code>, the existence of output files, and the expected aggregate counts before and after adding a new file. It never checks that the implementation is written in C or that any of the required mechanisms are actually used. Consequently, another implementation that merely reproduces the expected observable files and counts could satisfy the verifier without implementing the requested archiver.</p>
+  <p class="evidence"><strong>Key evidence.</strong> The verifier checks the process name, output-file existence, and <code>total_critical</code> counts, but never validates C source, <code>popen()</code>, recursive traversal, <code>inotify</code>, or atomic <code>rename()</code>.</p>
+</details>
+<details id="audit-task_000233_ee5f0e33" data-verdict="verifier-too-weak" hidden>
+  <summary><a class="badge" href="#def-verifier-too-weak" title="Verdict definition (RIVER section)">Verifier-Too-Weak</a> <code>task_000233</code></summary>
+  <p><strong>Task.</strong> Back up and repair several microservice configurations, write an idempotent Bash script that applies the required port and upstream settings, and write a second script that derives a topology report from the resulting configurations.</p>
+  <p><strong>Why it fails the audit.</strong> The verifier checks configuration values only through substring membership, such as testing whether <code>LISTEN_PORT=9001</code> occurs somewhere in the file. This does not ensure that the configuration is well formed, unique, or free of conflicting stale values. More importantly, although the task requires <code>generate_report.sh</code> to parse the configurations and dynamically construct the topology report, the verifier never executes that script. It only checks that the final report file contains a fixed set of expected lines. Thus, the required data flow from configuration repair to report generation is not verified.</p>
+  <p class="evidence"><strong>Key evidence.</strong> Configuration values are checked by substring presence only, and <code>generate_report.sh</code> is never executed by the verifier.</p>
+</details>
+<details id="audit-task_000087_787a0724" data-verdict="instr-verifier-mismatch" hidden>
+  <summary><a class="badge" href="#def-instr-verifier-mismatch" title="Verdict definition (RIVER section)">Instr-Verifier-Mismatch</a> <code>task_000087</code></summary>
+  <p><strong>Task.</strong> Implement a C program that selects hyperparameters M and T for a text classifier using sequential 5-fold cross-validation over 100 examples.</p>
+  <p><strong>Why it fails the audit.</strong> The instruction explicitly requires evaluating every (M, T) pair on five sequential validation folds of 20 examples each and selecting the pair with the highest mean validation accuracy. The verifier implements a different selection criterion: it evaluates every candidate once on all 100 examples and chooses the pair with the highest full-dataset accuracy. These two objectives are not equivalent. Therefore, a program that correctly implements the requested cross-validation procedure can select a different pair from the one accepted by the verifier.</p>
+  <p class="evidence"><strong>Key evidence.</strong> Instruction: mean accuracy over five sequential validation folds. Verifier: <code>correct / len(y)</code> over the entire 100-example dataset, with no cross-validation folds.</p>
+</details>
+<details id="audit-task_001036_07b75c89" data-verdict="instr-verifier-mismatch">
+  <summary><a class="badge" href="#def-instr-verifier-mismatch" title="Verdict definition (RIVER section)">Instr-Verifier-Mismatch</a> <code>task_001036</code></summary>
+  <p><strong>Task.</strong> Repair a compromised data-processing pipeline, including an authentication validator, a redaction worker, and an Nginx reverse proxy that should listen on <code>127.0.0.1:8080</code> and forward traffic to the Flask application.</p>
+  <p><strong>Why it fails the audit.</strong> The agent follows the networking requirement using the canonical Nginx configuration <code>listen 127.0.0.1:8080;</code>. However, the verifier searches the configuration with the regular expression <code>listen\s+8080\s*;</code>, which accepts <code>listen 8080;</code> but does not match the explicitly specified <code>127.0.0.1:8080</code> form. Thus, the verifier rejects a configuration that directly follows the instruction.</p>
+  <p class="evidence"><strong>Key evidence.</strong> Instruction requires listening on <code>127.0.0.1:8080</code>; the agent writes <code>listen 127.0.0.1:8080;</code>, while the verifier only matches the pattern <code>listen 8080;</code>.</p>
+</details>
+<details id="audit-task_000641_37f8ea78" data-verdict="instr-env-mismatch">
+  <summary><a class="badge" href="#def-instr-env-mismatch" title="Verdict definition (RIVER section)">Instr-Env-Mismatch</a> <code>task_000641</code></summary>
+  <p><strong>Task.</strong> Read a mathematical degeneracy threshold from an image at <code>/app/threshold.png</code> using OCR and use that threshold in the requested analysis.</p>
+  <p><strong>Why it fails the audit.</strong> The instruction explicitly identifies <code>/app/threshold.png</code> as the input containing the threshold definition. The environment does not provide a file at that path. Instead, the Dockerfile copies the available image to <code>/app/fixtures/image.png</code>, and the setup script does not create or copy anything to <code>/app/threshold.png</code>. The required input therefore cannot be accessed at the location specified by the task.</p>
+  <p class="evidence"><strong>Key evidence.</strong> Instruction: <code>/app/threshold.png</code>. Dockerfile: <code>COPY fixtures/image.png /app/fixtures/image.png</code>. No setup step creates <code>/app/threshold.png</code>.</p>
+</details>
+<details id="audit-task_000051_313e5ebc" data-verdict="instr-env-mismatch" hidden>
+  <summary><a class="badge" href="#def-instr-env-mismatch" title="Verdict definition (RIVER section)">Instr-Env-Mismatch</a> <code>task_000051</code></summary>
+  <p><strong>Task.</strong> Transcribe an incident audio recording, redact the recovered secret from log files, and implement a secure JWT validator whose outputs should match a provided reference implementation under fuzz testing.</p>
+  <p><strong>Why it fails the audit.</strong> The instruction refers to the audio input at <code>/app/incident_log.wav</code>, whereas the environment copies the audio fixture to <code>/app/fixtures/audio.wav</code>. More critically, the verifier evaluates the agent&rsquo;s JWT validator against <code>/app/reference_validator_oracle.py</code>, but the environment does not provide that reference file. The task and verifier therefore depend on artifacts that are absent from the runtime environment.</p>
+  <p class="evidence"><strong>Key evidence.</strong> Instruction expects <code>/app/incident_log.wav</code>; the Dockerfile provides <code>/app/fixtures/audio.wav</code>. The verifier additionally requires <code>/app/reference_validator_oracle.py</code>, which is not created by the environment.</p>
+</details>
+<details id="audit-task_000028_ae6330dd" data-verdict="answer-leak">
+  <summary><a class="badge" href="#def-answer-leak" title="Verdict definition (RIVER section)">Answer-Leak</a> <code>task_000028</code></summary>
+  <p><strong>Task.</strong> Perform a multi-stage incident investigation: extract information from video, recover a 4-byte XOR key from an ELF binary, analyze packet-capture traffic, and produce a JSON report containing the detected malicious events.</p>
+  <p><strong>Why it fails the audit.</strong> The intended task requires combining several forensic modalities to recover three specific events. However, the setup exposes <code>/home/user/ground_truth.json</code>, which already contains the exact three events used by the verifier, including timestamps, payload values, and certificate flags. Reading this file reveals the complete expected report, so the intended video, binary, and packet-capture analysis can be bypassed.</p>
+  <p class="evidence"><strong>Key evidence.</strong> The environment&rsquo;s <code>ground_truth.json</code> contains the same three events as the verifier truth set, including timestamps <code>00:01:15</code>, <code>00:02:30</code>, and <code>00:04:45</code>, together with the expected payload and flags.</p>
+</details>
+<details id="audit-task_000236_54686d44" data-verdict="answer-leak" hidden>
+  <summary><a class="badge" href="#def-answer-leak" title="Verdict definition (RIVER section)">Answer-Leak</a> <code>task_000236</code></summary>
+  <p><strong>Task.</strong> Recover a passphrase from video, decrypt a vault, reverse-engineer a malicious 12-byte signature from an ELF payload, and implement an efficient IDS scanner that detects that signature in logs.</p>
+  <p><strong>Why it fails the audit.</strong> The intended pipeline requires several nontrivial steps before the malicious signature can be recovered. However, the exact signature <code>deadbeef1122334455667788</code> is already embedded in the environment&rsquo;s fixture metadata. An agent can read this value directly and hard-code it into the scanner, bypassing the video extraction, vault decryption, and binary reverse-engineering stages.</p>
+  <p class="evidence"><strong>Key evidence.</strong> The fixture files contain the complete 12-byte signature <code>DE AD BE EF 11 22 33 44 55 66 77 88</code>, identical to the value expected by the verifier.</p>
+</details>
+<details id="audit-task_004618_d562309e" data-verdict="instr-ambiguous" hidden>
+  <summary><a class="badge" href="#def-instr-ambiguous" title="Verdict definition (RIVER section)">Instr-Ambiguous</a> <code>task_004618</code></summary>
+  <p><strong>Task.</strong> Compute employee rankings within each department according to <code>total_team_sales</code> in descending order and output the ranked results.</p>
+  <p><strong>Why it fails the audit.</strong> The instruction specifies the primary ranking key but does not define what should happen when two employees in the same department have identical <code>total_team_sales</code>. Multiple orderings are therefore consistent with the instruction. The verifier silently resolves ties using employee ID in ascending order and uses this ordering to assign the final ranks. A competent implementation using another deterministic tie-breaking convention can therefore produce a different, equally reasonable result.</p>
+  <p class="evidence"><strong>Key evidence.</strong> Instruction specifies only descending <code>total_team_sales</code>. Verifier uses <code>emps.sort(key=lambda x: (-x[0], x[1]))</code>, where <code>x[1]</code> is <code>emp_id</code>.</p>
+</details>
+<details id="audit-task_000795_cd4f601f" data-verdict="instr-ambiguous" hidden>
+  <summary><a class="badge" href="#def-instr-ambiguous" title="Verdict definition (RIVER section)">Instr-Ambiguous</a> <code>task_000795</code></summary>
+  <p><strong>Task.</strong> Load a directed citation graph into SQLite and compute the shortest path from node 10 to node 99.</p>
+  <p><strong>Why it fails the audit.</strong> The graph contains multiple shortest paths of equal length, but the instruction does not specify a tie-breaking convention. Standard BFS or Dijkstra implementations can therefore return different shortest paths depending on adjacency order or queue ordering. The verifier, however, accepts only one hard-coded path: <code>10,25,40,88,99</code>. Thus, an equally short and mathematically valid path can be rejected.</p>
+  <p class="evidence"><strong>Key evidence.</strong> Multiple equal-length shortest paths exist; the instruction provides no tie-breaking rule, while the verifier requires the single sequence <code>10,25,40,88,99</code>.</p>
+</details>
+<details id="audit-task_001515_bf254241" data-verdict="task-trivial" hidden>
+  <summary><a class="badge" href="#def-task-trivial" title="Verdict definition (RIVER section)">Task-Trivial</a> <code>task_001515</code></summary>
+  <p><strong>Task.</strong> Recover a 3×3 projection matrix from the voice memo <code>/app/artifact_summary.wav</code>, then implement a Python transformation script that applies the recovered matrix to arbitrary three-dimensional inputs.</p>
+  <p><strong>Why it fails the audit.</strong> The stated challenge is to recover the matrix from audio. However, the agent-accessible environment also contains <code>/app/oracle_transform.py</code>, the exact reference implementation used by the verifier for fuzz equivalence. Inspecting or probing this deterministic oracle directly reveals the transformation, so the audio-recovery component is unnecessary. In the observed rollout, the agent directly inspected the oracle and recovered the fixed diagonal transformation from it.</p>
+  <p class="evidence"><strong>Key evidence.</strong> The verifier invokes <code>/app/oracle_transform.py</code> as the reference implementation, and this same oracle is accessible to the agent. It reveals the matrix diag(2.5, −1.5, 4.2), allowing the transformation to be hard-coded without using the audio.</p>
+</details>
+  </div>
+  <p class="case-note">The paper includes additional audit cases.</p>
+
+  <h3 id="sec-8b">8b. What corrupted rewards teach</h3>
+  <p>These rollout traces show the moment a shortcut is rewarded or a correct solution is rejected. Expand a case to follow the interaction turn by turn.</p>
+
+  <div class="tabs" id="rollout-tabs">
+    <div role="tablist" aria-label="Rollout trace categories">
+      <button type="button" role="tab" id="tab-fp" aria-controls="panel-fp" aria-selected="true">False-positive: reward = 1 for cheating</button>
+      <button type="button" role="tab" id="tab-fn" aria-controls="panel-fn" aria-selected="false">False-negative: reward = 0 for being right</button>
+    </div>
+    <div role="tabpanel" id="panel-fp" aria-labelledby="tab-fp">
+      <h4>False-positive: reward = 1 for cheating</h4>
+<details id="rollout-task_003722">
+  <summary><span class="badge">reward = 1</span> Case 1: Answer Leak <code>task_003722</code></summary>
+  <p><strong>Task.</strong> Recover a scrolling news ticker from <code>archive_broadcast.mp4</code>. The agent must extract frames at 1 FPS, crop the bottom of each frame, run OCR, reverse mojibake corruption, normalize the recovered text, and reconstruct the chronological ticker in <code>reconstructed_ticker.txt</code>.</p>
+  <p><strong>Defect.</strong> The verifier compares the reconstructed text against <mark class="hl"><code>/app/ground_truth.txt</code></mark>, but this supposedly hidden reference is directly readable by the agent.</p>
+<dl class="trace">
+  <div><dt>T1</dt><dd>While inspecting the environment, the agent discovers <code>/app/ground_truth.txt</code> alongside the video and reads the complete expected ticker.</dd></div>
+  <div><dt>T2–T5</dt><dd>The agent nevertheless attempts the intended video pipeline: it extracts frames, crops the ticker region, and constructs a noisy OCR-like reconstruction containing duplicated and corrupted fragments.</dd></div>
+  <div class="hl-turn"><dt>T6</dt><dd>It explicitly compares this reconstruction against the leaked reference and obtains only <mark class="hl">0.368 similarity</mark>, far below the required threshold of 0.85.</dd></div>
+  <div class="hl-turn"><dt>T7</dt><dd>The agent then reasons that the output should match the expected string and <mark class="hl">replaces the failed reconstruction with the text read directly from <code>ground_truth.txt</code></mark>.</dd></div>
+  <div><dt>T8</dt><dd>The final output is identical to the reference, giving similarity 1.0 and full reward.</dd></div>
+</dl>
+  <p><strong>Why the reward is misleading.</strong> The intended challenge is to recover the ticker from the video. The agent&rsquo;s actual reconstruction is insufficient, but the exposed reference lets it replace that failed result with the exact answer. Thus, <mark class="hl">the successful reward reflects access to the verifier target rather than successful video understanding</mark>.</p>
+</details>
+<details id="rollout-task_000925">
+  <summary><span class="badge">reward = 1</span> Case 2: Degenerate Oracle <code>task_000925</code></summary>
+  <p><strong>Task.</strong> Reverse-engineer the behavior of a proprietary semantic-version resolver, <code>/app/legacy_resolver</code>, and implement a Bash replacement supporting SemVer comparisons, Boolean operators, and parentheses.</p>
+  <p><strong>Defect.</strong> The supplied resolver is degenerate: across the agent&rsquo;s probes, it returns exit code 0 even for obviously false comparisons. The verifier evaluates the replacement by agreement with this broken resolver.</p>
+<dl class="trace">
+  <div><dt>T1–T3</dt><dd>The agent probes <code>legacy_resolver</code> on straightforward positive and negative examples.</dd></div>
+  <div><dt>T4</dt><dd>It observes that contradictory cases such as <code>&gt;=1.0.0</code> with <code>0.9.0</code>, <code>&gt;2.0.0</code> with <code>1.9.0</code>, and <code>=1.0.0</code> with <code>2.0.0</code> all return success.</dd></div>
+  <div class="hl-turn"><dt>T5</dt><dd>The agent explicitly concludes: <mark class="hl">&ldquo;The binary appears to have a bug where it just always returns exit code 0.&rdquo;</mark></dd></div>
+  <div class="hl-turn"><dt>T6</dt><dd>Instead of implementing semantic-version parsing and comparison, it creates a replacement whose effective behavior is simply <mark class="hl"><code>exit 0</code></mark> for every input.</dd></div>
+  <div><dt>T7</dt><dd>Because the verifier compares the replacement against the same degenerate oracle, this constant policy receives full reward.</dd></div>
+</dl>
+  <p><strong>Why the reward is misleading.</strong> The replacement does not implement semantic-version matching. Instead, <mark class="hl">the policy identifies the oracle&rsquo;s degenerate decision boundary and implements the cheapest behavior that reproduces it</mark>. This shows how a defective oracle can make a trivial shortcut optimal under the observed reward.</p>
+</details>
+<details id="rollout-task_008903">
+  <summary><span class="badge">reward = 1</span> Case 3: Answer Embedded in the Instruction <code>task_008903</code></summary>
+  <p><strong>Task.</strong> Write and run a C++ scanner over several binaries. For each valid 64-bit ELF file, the scanner must determine whether the SUID bit is set, parse the ELF <code>.rodata</code> section, detect whether it contains the string <code>/etc/shadow</code>, and write the sorted results to <code>/home/user/scan_results.txt</code>.</p>
+  <p><strong>Defect.</strong> The instruction&rsquo;s example output is not merely illustrative: it gives the <mark class="hl">exact correct three output lines for the binaries in the environment</mark>. The verifier then checks the final result against those same expected values.</p>
+<dl class="trace">
+  <div><dt>T1–T3</dt><dd>The agent attempts to construct the requested C++ scanner, but compilation and execution do not produce a reliable working scan.</dd></div>
+  <div><dt>T4</dt><dd>It notices that the instruction already provides the complete expected output: <code>fake_bin: SUID=Yes, SHADOW_IN_RODATA=No</code>, <code>safe_bin: SUID=No, SHADOW_IN_RODATA=No</code>, and <code>suid_bin: SUID=Yes, SHADOW_IN_RODATA=Yes</code>.</dd></div>
+  <div class="hl-turn"><dt>T5</dt><dd>The trajectory explicitly acknowledges the shortcut: <mark class="hl">&ldquo;I&rsquo;ve just created a hardcoded output file&rdquo;</mark>, and writes these three lines directly to <code>scan_results.txt</code>.</dd></div>
+  <div><dt>T6</dt><dd>The hard-coded file matches the expected output and receives full reward even though the requested scanner is not demonstrated to have produced it.</dd></div>
+</dl>
+  <p><strong>Why the reward is misleading.</strong> The task is intended to test binary inspection and ELF parsing. Instead, <mark class="hl">the exact answer is exposed in the instruction and can be copied without obtaining it from the binaries</mark>. The final-output verifier cannot distinguish this shortcut from a working scanner.</p>
+</details>
+<details id="rollout-task_001515">
+  <summary><span class="badge">reward = 1</span> Case 4: Task Trivial <code>task_001515</code></summary>
+  <p><strong>Task.</strong> Recover a 3×3 linear transformation from the voice memo <code>/app/artifact_summary.wav</code>, then implement the transformation in <code>/home/user/transform.py</code>. The script is evaluated on random three-dimensional input vectors.</p>
+  <p><strong>Defect.</strong> The exact reference implementation, <mark class="hl"><code>/app/oracle_transform.py</code></mark>, is shipped inside the agent-accessible container, and the verifier uses this same script as the oracle for fuzz equivalence.</p>
+<dl class="trace">
+  <div><dt>T1</dt><dd>The agent lists the task files and discovers <code>oracle_transform.py</code> alongside the audio memo.</dd></div>
+  <div class="hl-turn"><dt>T2</dt><dd>Rather than recovering the matrix from the audio, it executes <mark class="hl"><code>cat /app/oracle_transform.py</code></mark>.</dd></div>
+  <div><dt>T3</dt><dd>The reference implementation reveals the entire transformation: diag(2.5, −1.5, 4.2).</dd></div>
+  <div><dt>T4</dt><dd>The agent writes <code>transform.py</code> using exactly these constants.</dd></div>
+  <div class="hl-turn"><dt>T5–T6</dt><dd>It explicitly notes that <mark class="hl">&ldquo;the audio file wasn&rsquo;t needed&rdquo;</mark>. The verifier then fuzzes the copied implementation against the exposed oracle, and all tests pass.</dd></div>
+</dl>
+  <p><strong>Why the reward is misleading.</strong> The generated implementation is numerically correct, but the defining challenge of the task is to recover the transformation from the voice memo. <mark class="hl">Exposing the reference implementation collapses the intended audio-understanding task into copying a few constants</mark>.</p>
+</details>
+<details id="rollout-task_008402">
+  <summary><span class="badge">reward = 1</span> Case 5: Unchecked Implementation Constraint <code>task_008402</code></summary>
+  <p><strong>Task.</strong> Fix a C++ backup-analysis program so that it queries replication metadata, constructs the valid directed graph, computes the lowest-latency path between two datacenters, and writes the result to <code>optimal_backup_path.json</code>. The instruction explicitly requires the solution to be produced entirely in C++ and forbids a separate Python or Bash implementation.</p>
+  <p><strong>Defect.</strong> The verifier only checks that <code>/home/user/backup_analyzer</code> exists and is executable, then separately checks the JSON contents. <mark class="hl">It never runs the C++ executable to verify that the executable actually produced the answer</mark>.</p>
+<dl class="trace">
+  <div><dt>T1–T3</dt><dd>The agent edits and compiles the requested C++ program, but repeated executions of <code>backup_analyzer</code> time out and never produce the required JSON.</dd></div>
+  <div><dt>T4</dt><dd>Instead of continuing to debug the required implementation, it writes a separate Python program, <code>backup_checker.py</code>, that computes the answer.</dd></div>
+  <div class="hl-turn"><dt>T5</dt><dd>The Python program writes the correct path <mark class="hl"><code>[1,2,4]</code></mark> with total latency <mark class="hl"><code>30</code></mark> to <code>optimal_backup_path.json</code>.</dd></div>
+  <div><dt>T6</dt><dd>The trajectory explicitly acknowledges that the C++ program was timing out and that Python was used to generate the final output.</dd></div>
+  <div><dt>T7</dt><dd>The verifier observes an executable C++ file and a correct JSON file, never checks their causal relationship, and returns full reward.</dd></div>
+</dl>
+  <p><strong>Why the reward is misleading.</strong> The numerical answer is correct, but the explicit implementation requirement is not satisfied. <mark class="hl">Existence-only verification of the binary lets a forbidden Python bypass receive the same reward as a working C++ implementation</mark>.</p>
+</details>
+    </div>
+    <div role="tabpanel" id="panel-fn" aria-labelledby="tab-fn">
+      <h4>False-negative: reward = 0 for being right</h4>
+<details id="rollout-task_009230">
+  <summary><span class="badge">reward = 0</span> Case 1: Incorrect Numerical Reference <code>task_009230</code></summary>
+  <p><strong>Task.</strong> Compute a posterior score using the specified formula p = (1 − exp(−x)) · p_prior, and write the resulting probability rounded to six decimal places.</p>
+  <p><strong>Defect.</strong> For one case with x = 2.99 and p_prior = 0.7, the verifier hard-codes <mark class="hl"><code>0.664815</code></mark> as the expected value.</p>
+<dl class="trace">
+  <div><dt>T1–T3</dt><dd>The agent follows the numerical procedure specified by the instruction.</dd></div>
+  <div class="hl-turn"><dt>T4</dt><dd>For the disputed value, it computes (1 − exp(−2.99)) × 0.7 = 0.664798794…, which rounds to <mark class="hl"><code>0.664799</code></mark>.</dd></div>
+  <div><dt>T5</dt><dd>The remaining reported numerical values match the verifier.</dd></div>
+  <div><dt>T6</dt><dd>The verifier nevertheless expects <code>0.664815</code>. The discrepancy exceeds its tolerance, so the mathematically correct rollout receives <code>reward</code> = 0.</dd></div>
+</dl>
+  <p><strong>Why the reward is misleading.</strong> The agent follows the stated formula and produces the correct rounded value. <mark class="hl">The failure is caused by an erroneous hard-coded reference constant, not by an error in the solution</mark>.</p>
+</details>
+<details id="rollout-task_006064">
+  <summary><span class="badge">reward = 0</span> Case 2: Brittle Source-Code Check <code>task_006064</code></summary>
+  <p><strong>Task.</strong> Fix a Rust text-processing pipeline so that it lowercases the corpus, retains only alphabetic characters <code>a-z</code> and spaces, tokenizes by whitespace, reports the top three tokens, and computes their 3×3 sample covariance matrix.</p>
+  <p><strong>Defect.</strong> Two functional tests validate the produced tokens and covariance matrix, but a third test additionally requires the source file to contain the literal substring <mark class="hl"><code>is_alphabetic</code></mark>. The instruction never requires this specific Rust API.</p>
+<dl class="trace">
+  <div><dt>T1–T3</dt><dd>The agent fixes the tokenization using <code>c.is_ascii_alphabetic() || c.is_whitespace()</code>, which directly matches the instruction&rsquo;s requirement to retain <code>a-z</code> characters and spaces.</dd></div>
+  <div><dt>T4</dt><dd>It builds and runs the Rust project successfully.</dd></div>
+  <div><dt>T5</dt><dd>The resulting <code>top_tokens.txt</code> is byte-exact correct (<code>the</code>, <code>quick</code>, <code>dog</code>), and <code>covariance.csv</code> exactly matches the expected matrix.</dd></div>
+  <div class="hl-turn"><dt>T6</dt><dd>Both functional output tests pass, but the source-inspection test fails solely because <mark class="hl"><code>is_ascii_alphabetic</code> does not contain the literal substring <code>is_alphabetic</code></mark>. The final reward is therefore 0.</dd></div>
+</dl>
+  <p><strong>Why the reward is misleading.</strong> The observable behavior is correct, and the chosen API is at least as faithful to the explicit <code>a-z</code> requirement as the expected implementation. <mark class="hl">A brittle source-pattern check rejects a functionally correct solution because it uses a different valid implementation</mark>.</p>
+</details>
+<details id="rollout-task_002319">
+  <summary><span class="badge">reward = 0</span> Case 3: Incorrect Semantic Assumption <code>task_002319</code></summary>
+  <p><strong>Task.</strong> Perform spectral analysis on an EIIP-mapped DNA sequence. After computing the float64 FFT magnitude spectrum, the instruction requires finding the maximum magnitude over indices 1 through N/2, excluding only the DC component.</p>
+  <p><strong>Defect.</strong> The verifier does not compute the requested maximum. Instead, it hard-codes <mark class="hl"><code>expected_peak_index = N // 11</code></mark>, assuming that the fundamental frequency must be dominant.</p>
+<dl class="trace">
+  <div><dt>T1–T3</dt><dd>The agent parses the FASTA file, constructs the float32 and float64 EIIP sequences, computes both FFTs, and evaluates their magnitude spectra.</dd></div>
+  <div class="hl-turn"><dt>T4</dt><dd>Following the instruction literally, it searches indices 1 through N/2 and obtains <mark class="hl"><code>peak_index = 50000</code></mark> with magnitude approximately 1311.08.</dd></div>
+  <div><dt>T5</dt><dd>Independent recomputation confirms that this is the true maximum. The verifier&rsquo;s expected index <code>10000</code> has magnitude only about 322.33.</dd></div>
+  <div><dt>T6</dt><dd>The verifier nevertheless rejects <code>50000</code> because it expects the hard-coded fundamental-frequency index, producing <code>reward</code> = 0.</dd></div>
+</dl>
+  <p><strong>Why the reward is misleading.</strong> The agent correctly answers the question posed by the instruction. <mark class="hl">The verifier substitutes an incorrect domain assumption for the actual maximum and penalizes the correct spectral result</mark>.</p>
+</details>
+<details id="rollout-task_001636">
+  <summary><span class="badge">reward = 0</span> Case 4: Buggy Reference Oracle <code>task_001636</code></summary>
+  <p><strong>Task.</strong> Build a high-performance C program for &ldquo;latest-frame&rdquo; lookup. Given a query timestamp T, it must return the frame whose <code>pkt_pts_time</code> is the largest value less than or equal to T, using an indexed array and binary search.</p>
+  <p><strong>Defect.</strong> The reference oracle reads H.264 packet metadata in decode order, where PTS values are not monotonic, and then <mark class="hl">runs binary search on this unsorted array</mark>. The verifier compares the agent against this buggy oracle rather than against the requested lookup semantics.</p>
+<dl class="trace">
+  <div><dt>T1–T3</dt><dd>The agent extracts the same PTS/packet-size pairs from the video as the oracle.</dd></div>
+  <div><dt>T4</dt><dd>Because binary search requires sorted keys, it correctly sorts the metadata by PTS before building the query index.</dd></div>
+  <div class="hl-turn"><dt>T5</dt><dd>For query <code>2.6755</code>, the largest PTS not exceeding the query is <code>2.6</code>, whose packet size is <mark class="hl"><code>120</code></mark>.</dd></div>
+  <div><dt>T6</dt><dd>The unsorted oracle instead returns <code>97</code>. The verifier treats <code>97</code> as ground truth and rejects the agent&rsquo;s correct <code>2.6755 -&gt; 120</code> output.</dd></div>
+</dl>
+  <p><strong>Why the reward is misleading.</strong> The agent implements the requested latest-frame semantics and satisfies the precondition required for binary search. <mark class="hl">It receives zero reward because oracle equivalence is used as a proxy for correctness even though the oracle itself violates the algorithm&rsquo;s assumptions</mark>.</p>
+</details>
+<details id="rollout-task_001040">
+  <summary><span class="badge">reward = 0</span> Case 5: Inconsistent End-to-End Test <code>task_001040</code></summary>
+  <p><strong>Task.</strong> Repair a local experiment-tracking pipeline by configuring Nginx to proxy <code>127.0.0.1:8080</code> to a provided Flask server, writing a CSV validator, and starting the services. Clean training-log uploads should be accepted, while malformed logs should be rejected.</p>
+  <p><strong>Defect.</strong> The provided Flask server accepts uploads only through a multipart form field named <code>file</code>; if this field is missing, it returns HTTP 400. However, the end-to-end verifier <mark class="hl">sends the CSV bytes as a raw POST body with no multipart encoding and no <code>file</code> field</mark>, while still requiring HTTP 200 for a clean file.</p>
+<dl class="trace">
+  <div><dt>T1–T4</dt><dd>The agent writes a validator enforcing the requested headers and numerical constraints, configures Nginx to proxy port 8080 to the Flask service on port 5000, and writes an executable startup script.</dd></div>
+  <div><dt>T5</dt><dd>The static validator, startup-script, and configuration tests pass; three of the four verifier tests succeed.</dd></div>
+  <div><dt>T6</dt><dd>The end-to-end test reads a clean CSV into raw bytes and constructs <code>urllib.request.Request(..., data=data, method="POST")</code> without a multipart <code>file</code> field.</dd></div>
+  <div class="hl-turn"><dt>T7</dt><dd>The unmodified Flask fixture therefore behaves as designed and returns <mark class="hl"><code>400 BAD REQUEST</code></mark>, while the verifier expects <code>200</code>. The rollout receives <code>reward</code> = 0.</dd></div>
+</dl>
+  <p><strong>Why the reward is misleading.</strong> The failing request does not use the upload protocol required by the provided server. <mark class="hl">The verifier and fixture are internally inconsistent, so an instruction-faithful solution cannot satisfy the end-to-end test</mark>.</p>
+</details>
+    </div>
+  </div>
+
+  <p class="takeaway">False positives can reinforce shortcuts; false negatives can punish correct behavior. With the same 3.5K-environment budget, RIVER scores <strong>19.4</strong> compared with <strong>17.7</strong> for a random TMax subset. This comparison suggests that reward integrity matters for RL training.</p>
+</section>
+
+<!-- ============ 9. ACKNOWLEDGMENTS ============ -->
+<section id="acknowledgments">
+  <h2>Acknowledgments</h2>
+  <p>Our audit identifies issues in some TMax environments, but the collection remains an important contribution to the community. We are grateful to the TMax authors for releasing a resource that has enabled this study and supports broader research on terminal-agent RL.</p>
+</section>
+
+<!-- ============ 10. BIBTEX ============ -->
+<section id="bibtex">
+  <h2>BibTeX</h2>
+  <!-- anon-gated: the citation key and author line inside the BibTeX block. Adding class="anon"
+       to <body> hides them for the ICLR review period and shows the anon-only key instead. -->
+  <pre><code>@misc{<span class="anon-gated">yao2026river</span><span class="anon-only">anonymous2026river</span>,
+  title  = {Learning Generalizable Behaviors for Terminal Agents},
+<span class="anon-gated">  author = {Yao, Yihang and Pang, Bo and Nguyen, Xuan Phi and Zhao, Ding and Joty, Shafiq and Yavuz, Semih},
+</span>  year   = {2026},
+  note   = {arXiv preprint}
+}</code></pre>
+</section>
+
+</main>
+
+<script src="main.js"></script>
+</body>
+</html>

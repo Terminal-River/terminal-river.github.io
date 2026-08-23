@@ -1,0 +1,275 @@
+/* RIVER project page: simple, clear, light theme.
+   Accent budget (3): ours-row highlight, mark.hl red highlight, pull-quote border. */
+
+:root {
+  --text: #1c1e21;
+  --muted: #5c6066;
+  --line: #d9dce1;
+  --bg-soft: #f6f7f9;
+  --accent: #1a56db;          /* pull-quote border + ours-row tint */
+  --hl-red: #a61b1b;          /* mark.hl red highlight */
+  --hl-red-bg: #fdecea;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0 auto;
+  padding: 0 1.25rem 4rem;
+  max-width: 880px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--text);
+  background: #fff;
+}
+
+/* Anonymization flag: add class="anon" to <body> during the ICLR review period. */
+body.anon .anon-gated { display: none; }
+/* Shown only in the anonymized build (e.g. the anonymous BibTeX citation key). */
+.anon-only { display: none; }
+body.anon .anon-only { display: inline; }
+
+/* Progressive enhancement: a one-line inline script in <head> adds class="js" to
+   <html>. Without JS the 8b panels render stacked, so hide the inert tabs. */
+html:not(.js) [role="tablist"] { display: none; }
+
+code, pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+code { background: var(--bg-soft); padding: 0.1em 0.3em; border-radius: 3px; }
+pre {
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+pre code { background: none; padding: 0; }
+
+a { color: inherit; }
+a:hover { text-decoration-thickness: 2px; }
+
+h1, h2, h3, h4 { line-height: 1.25; }
+h2 { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
+h3 { margin-top: 2rem; }
+section { margin-top: 1rem; }
+
+/* --- nav --- */
+nav {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+nav a { text-decoration: none; }
+nav a:hover { text-decoration: underline; }
+
+/* --- hero --- */
+#hero { text-align: center; margin-top: 2.5rem; }
+#hero h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+.tagline { font-size: 1.125rem; font-weight: 700; margin-top: 0; }
+.tagline span { display: block; }
+.tagline span + span { margin-top: 0.25rem; }
+.authors { font-size: 1.125rem; margin-bottom: 0.25rem; }
+.authors a { color: var(--accent); text-decoration: none; }
+.authors a:hover { text-decoration: underline; }
+.affiliations, .contrib-note { font-size: 1rem; margin: 0; }
+.btn {
+  display: inline-block;
+  margin: 0.25rem 0.2rem;
+  padding: 0.4rem 1.1rem;
+  border: 1px solid var(--text);
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 0.9375rem;
+}
+.btn:hover { background: var(--bg-soft); }
+.venue { color: var(--muted); font-size: 0.875rem; margin-top: 0.5rem; }
+.stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+}
+.stat-strip li {
+  flex: 1 1 180px;
+  max-width: 240px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  background: var(--bg-soft);
+}
+.stat-num { display: block; font-weight: 700; font-size: 1.25rem; }
+.stat-label { display: block; font-size: 0.8125rem; color: var(--muted); line-height: 1.4; }
+
+.teaser-chip {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.35rem 1rem;
+  font-size: 0.9375rem;
+  background: var(--bg-soft);
+  text-decoration: none;
+}
+.teaser-chip:hover { text-decoration: underline; }
+
+/* --- figures --- */
+figure { margin: 2rem 0; text-align: center; }
+figure img { max-width: 100%; height: auto; }
+.fig-narrow img { max-width: 520px; width: 100%; }
+.fig-three-quarter img { width: 75%; }
+figcaption {
+  width: fit-content;
+  max-width: 100%;
+  text-align: left;
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin: 0.6rem auto 0;
+  line-height: 1.5;
+}
+
+/* --- pull quotes (accent 1: border) --- */
+.pull-quote {
+  margin: 1.75rem 0;
+  padding: 0.25rem 1.25rem;
+  border-left: 4px solid var(--accent);
+  background: var(--bg-soft);
+  font-size: 1.0625rem;
+}
+.pull-quote p { margin: 0.75rem 0; font-style: italic; }
+
+/* --- tables --- */
+.table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9375rem; }
+table.mini { max-width: 520px; }
+caption {
+  caption-side: bottom;
+  text-align: left;
+  font-size: 0.875rem;
+  color: var(--muted);
+  padding-top: 0.6rem;
+}
+th, td { padding: 0.45rem 0.7rem; text-align: left; white-space: nowrap; }
+thead th { border-bottom: 2px solid var(--text); }
+tbody th { font-weight: 500; }
+tbody tr { border-bottom: 1px solid var(--line); }
+tbody tr.group-start { border-top: 2px solid var(--line); }
+.std { color: var(--muted); font-size: 0.85em; }
+.ellipsis-row td { color: var(--muted); white-space: normal; }
+
+/* accent 2: ours-row highlight */
+tr.ours-row { background: #e9effb; }
+
+/* accent 3: red highlight for case-file marks */
+mark.hl, mark { background: var(--hl-red-bg); color: var(--hl-red); padding: 0 0.15em; }
+mark.hl code, mark code { background: transparent; color: inherit; }
+
+/* --- recipe --- */
+.pipeline-steps li { margin: 0.6rem 0; }
+.pipeline-steps li.core {
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+}
+.callout {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.25rem 1.25rem 0.75rem;
+  margin: 1.75rem 0;
+  background: var(--bg-soft);
+}
+.callout h3 { margin-top: 1rem; font-size: 1.0625rem; }
+.verdict-list div { margin: 0.6rem 0; }
+.verdict-list dt { display: inline; }
+.verdict-list dd { display: inline; margin: 0; }
+.verdict-list dd::before { content: ": "; }
+
+/* --- details / expandables --- */
+details {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.5rem 0.9rem;
+  margin: 0.6rem 0;
+}
+details[open] { padding-bottom: 0.9rem; }
+summary { cursor: pointer; font-weight: 500; }
+summary:hover { color: var(--muted); }
+
+/* --- case files --- */
+.badge {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  padding: 0.05rem 0.6rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.evidence { font-size: 0.9375rem; }
+.case-note { color: var(--muted); font-size: 0.9375rem; }
+
+/* trace definition lists */
+dl.trace { margin: 1rem 0; border-top: 1px solid var(--line); }
+dl.trace > div {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--line);
+}
+dl.trace dt { font-weight: 600; font-size: 0.875rem; padding-top: 0.15rem; }
+dl.trace dd { margin: 0; font-size: 0.9375rem; }
+dl.trace .hl-turn dt { color: var(--hl-red); }
+
+/* tabs (8b) */
+[role="tablist"] { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1rem 0; }
+[role="tab"] {
+  border: 1px solid var(--line);
+  border-radius: 6px 6px 0 0;
+  background: var(--bg-soft);
+  padding: 0.45rem 0.9rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+[role="tab"][aria-selected="true"] {
+  background: #fff;
+  border-bottom-color: #fff;
+  font-weight: 600;
+}
+[role="tabpanel"] { margin-bottom: 1.5rem; }
+[role="tabpanel"] > h4 { margin-top: 0.5rem; }
+
+.micro-teaser, .takeaway {
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+}
+
+/* --- misc --- */
+.footnote { font-size: 0.875rem; color: var(--muted); }
+.def-cards { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1.5rem 0; }
+.def-card {
+  flex: 1 1 260px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.25rem 1.1rem 0.5rem;
+  background: var(--bg-soft);
+}
+.def-card h3 { margin: 0.9rem 0 0.25rem; font-size: 1.0625rem; }
+
+@media (max-width: 600px) {
+  body { font-size: 1rem; }
+  #hero h1 { font-size: 1.5rem; }
+  .stat-strip li { flex: 1 1 45%; max-width: none; }
+  dl.trace > div { grid-template-columns: 1fr; gap: 0.1rem; }
+}

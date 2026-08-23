@@ -1,0 +1,153 @@
+{
+  "leaderboard": {
+    "caption": "Evaluation results of 8B agents on four terminal benchmarks. Numbers are benchmark scores (x10^2). Avg. is the unweighted mean of the four benchmarks. Scores are mean ± std over 3 seeds. Baseline scores are reported by our evaluation pipeline under fair comparison.",
+    "columns": ["Otbl", "Tbv2.1", "Tbpro", "Twv", "Avg."],
+    "rows": [
+      {
+        "name": "River-8B (ours)",
+        "harness": "EndlessAgent",
+        "training": "SFT+RL",
+        "is_ours": true,
+        "values": [
+          {"mean": 21.8, "std": 2.9, "bold": true},
+          {"mean": 9.7, "std": 0.6, "bold": true},
+          {"mean": 23.0, "std": 3.1, "bold": true},
+          {"mean": 23.0, "std": 2.5, "bold": true},
+          {"mean": 19.4, "std": 1.2, "bold": true}
+        ]
+      },
+      {
+        "name": "OpenThinker-8B-RL",
+        "harness": "Terminus-2",
+        "training": "SFT+RL",
+        "is_ours": false,
+        "values": [
+          {"mean": 18.4, "std": 1.5, "bold": false},
+          {"mean": 8.6, "std": 0.6, "bold": false},
+          {"mean": 21.8, "std": 1.6, "bold": false},
+          {"mean": 22.3, "std": 1.5, "bold": false},
+          {"mean": 17.8, "std": 0.7, "bold": false}
+        ]
+      },
+      {
+        "name": "OT-SFT-Endless-8B",
+        "harness": "EndlessAgent",
+        "training": "SFT+RL",
+        "is_ours": false,
+        "values": [
+          {"mean": 14.1, "std": 3.6, "bold": false},
+          {"mean": 6.4, "std": 1.7, "bold": false},
+          {"mean": 16.8, "std": 0.8, "bold": false},
+          {"mean": 21.7, "std": 1.9, "bold": false},
+          {"mean": 14.7, "std": 1.1, "bold": false}
+        ]
+      },
+      {
+        "name": "TMax-RL-8B",
+        "harness": "Vanillux2",
+        "training": "RL",
+        "is_ours": false,
+        "values": [
+          {"mean": 17.0, "std": 3.7, "bold": false},
+          {"mean": 6.0, "std": 0.6, "bold": false},
+          {"mean": 16.3, "std": 1.0, "bold": false},
+          {"mean": 19.0, "std": 2.6, "bold": false},
+          {"mean": 14.6, "std": 1.2, "bold": false}
+        ]
+      },
+      {
+        "name": "OpenThinker-Agent-v1",
+        "harness": "Terminus-2",
+        "training": "SFT+RL",
+        "is_ours": false,
+        "values": [
+          {"mean": 16.0, "std": 0.6, "bold": false},
+          {"mean": 5.2, "std": 0.6, "bold": false},
+          {"mean": 16.2, "std": 1.0, "bold": false},
+          {"mean": 21.7, "std": 2.9, "bold": false},
+          {"mean": 14.8, "std": 0.8, "bold": false}
+        ]
+      },
+      {
+        "name": "TMax-SFT-8B",
+        "harness": "Vanillux2",
+        "training": "SFT",
+        "is_ours": false,
+        "values": [
+          {"mean": 12.1, "std": 3.4, "bold": false},
+          {"mean": 4.5, "std": 1.9, "bold": false},
+          {"mean": 13.7, "std": 1.9, "bold": false},
+          {"mean": 14.3, "std": 4.1, "bold": false},
+          {"mean": 11.2, "std": 1.5, "bold": false}
+        ]
+      },
+      {
+        "name": "River-SFT-8B",
+        "harness": "EndlessAgent",
+        "training": "SFT",
+        "is_ours": true,
+        "values": [
+          {"mean": 11.3, "std": 2.3, "bold": false},
+          {"mean": 6.4, "std": 1.3, "bold": false},
+          {"mean": 13.7, "std": 2.6, "bold": false},
+          {"mean": 18.5, "std": 2.3, "bold": false},
+          {"mean": 12.5, "std": 1.1, "bold": false}
+        ]
+      },
+      {
+        "name": "Qwen3-8B",
+        "harness": "EndlessAgent",
+        "training": "None",
+        "is_ours": false,
+        "values": [
+          {"mean": 3.8, "std": 1.3, "bold": false},
+          {"mean": 2.2, "std": 1.2, "bold": false},
+          {"mean": 6.8, "std": 0.6, "bold": false},
+          {"mean": 9.8, "std": 1.6, "bold": false},
+          {"mean": 5.7, "std": 0.6, "bold": false}
+        ]
+      }
+    ],
+    "notes": "Each row also lists its agent harness (EndlessAgent, Terminus-2, or Vanillux2) and training regime (SFT+RL, RL, SFT, or None). Scores are x10^2, reported as mean ± std over 3 seeds. Midrules in the source table separate SFT+RL/RL models, SFT-only models, and the untrained base model."
+  },
+  "ablation_random": {
+    "caption": "Numbers are benchmark scores (x10^2). Avg. is the unweighted mean of the four benchmarks. Scores are mean ± std over 3 seeds.",
+    "columns": ["Otbl", "Tbv2.1", "Tbpro", "Twv", "Avg."],
+    "rows": [
+      {
+        "name": "River-8B (ours)",
+        "is_ours": true,
+        "values": [
+          {"mean": 21.8, "std": 2.9, "bold": false},
+          {"mean": 9.7, "std": 0.6, "bold": false},
+          {"mean": 23.0, "std": 3.1, "bold": false},
+          {"mean": 23.0, "std": 2.5, "bold": false},
+          {"mean": 19.4, "std": 1.2, "bold": true}
+        ]
+      },
+      {
+        "name": "RL On Random TMax-3.5K",
+        "is_ours": false,
+        "values": [
+          {"mean": 18.6, "std": 1.9, "bold": false},
+          {"mean": 8.2, "std": 1.3, "bold": false},
+          {"mean": 23.7, "std": 1.5, "bold": false},
+          {"mean": 20.3, "std": 0.6, "bold": false},
+          {"mean": 17.7, "std": 0.7, "bold": false}
+        ]
+      },
+      {
+        "name": "River-8B-SFT",
+        "is_ours": true,
+        "values": [
+          {"mean": 11.3, "std": 2.3, "bold": false},
+          {"mean": 6.4, "std": 1.3, "bold": false},
+          {"mean": 13.7, "std": 2.6, "bold": false},
+          {"mean": 18.5, "std": 2.3, "bold": false},
+          {"mean": 12.5, "std": 1.1, "bold": false}
+        ]
+      }
+    ],
+    "notes": "Ablation on RL training data: RL on 3.5K randomly sampled unfiltered TMax environments vs. River-8B (ours) and the River-8B-SFT starting checkpoint. Scores are x10^2, mean ± std over 3 seeds. Only the River-8B Avg. cell is bolded in the source (\\gpmb)."
+  }
+}
