@@ -17,7 +17,7 @@
 
 **Affiliations:** ¹Salesforce AI Research · ²Carnegie Mellon University · †Core contributors
 
-**Venue line:** arXiv preprint
+**Venue button:** [arXiv preprint](https://arxiv.org/abs/2608.22631)
 
 **Stat strip (2 tiles):**
 1. **<30%** of the TMax environments used
@@ -218,7 +218,7 @@ Our audit identifies issues in some TMax environments, but the collection remain
   title  = {Learning Generalizable Behaviors for Terminal Agents},
   author = {Yao, Yihang and Pang, Bo and Nguyen, Xuan Phi and Zhao, Ding and Joty, Shafiq and Yavuz, Semih},
   year   = {2026},
-  note   = {arXiv preprint (link TBD)}
+  note   = {arXiv preprint arXiv:2608.22631}
 }
 ```
 

@@ -25,7 +25,7 @@ python3 -m http.server 8000
 
 ## TODO before release
 
-Also add the arXiv ID to the BibTeX `note = {arXiv preprint}` line once it exists, and swap the entry to `@inproceedings` post-acceptance.
+Swap the BibTeX entry to `@inproceedings` post-acceptance.
 
 ## Anonymization flag (ICLR review period)
 
